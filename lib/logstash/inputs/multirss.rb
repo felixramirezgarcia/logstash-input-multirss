@@ -167,8 +167,7 @@ class LogStash::Inputs::Multirss < LogStash::Inputs::Base
           event = nil
         end # if haskey
 
-      else # havent keywords!
-        #puts "Havent keywords, go to get all items"
+      else # havent keywords! Go to get all the rss items
         item.element_children.each do |x|
           if x.inner_html.to_s.chars.first(9).join == "<![CDATA["
             eve = LogStash::Event.new( x.name => x.inner_html.to_s[9..x.inner_html.to_s.length-4])
