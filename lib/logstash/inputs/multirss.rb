@@ -7,31 +7,37 @@ require "uri"
 require "mechanize"
 require "rss"
 require "nokogiri"
+require "fileutils"
 
 # if you want to debug it you just have to uncomment the puts and build the gem with 
 #   ruby -S gem build logstash-input-multirss.gemspec
-# and install the gem in a logstash service with
+# and install the gem in a logstash service or container with
 #   logstash-plugin install logstash-input-multirss-x.x.x.gem
 
 class LogStash::Inputs::Multirss < LogStash::Inputs::Base
-  config_name "multirss"
+  config_name "multirss"  #Plugin name
 
-  default :codec, "plain"
+  default :codec, "plain" #Codec
 
-  # The rss array list to use in the pipe
-  config :multi_feed, :validate => :array, :required => true
+  # The rss parent array list to use in the pipe (link with a lot rss links inside)
+  config :multi_feed, :validate => :array, :default => []
 
-  # The rss array list to use in the pipe
+  # The rss childs array list to use in the pipe (simple rss link)
   config :one_feed, :validate => :array, :default => []
 
   #Set de interval for stoppable_sleep
   config :interval, :validate => :number, :default => 3600
   
-  #Set de black list to forget read
+  #Set de black list to forget read and get content 
   config :blacklist, :validate => :array, :default => []
 
+  #Set de keywords to ONLY get content whit it
+  config :keywords, :validate => :array, :default => []
+
   public
-   def register
+   
+   def register #initialize
+    #Mechanize agent
     @agent = Mechanize.new
     @agent.agent.http.verify_mode = OpenSSL::SSL::VERIFY_NONE
    end # def register
@@ -41,11 +47,13 @@ class LogStash::Inputs::Multirss < LogStash::Inputs::Base
     # we can abort the loop if stop? becomes true
     urls = []
 
+    #Don't stop, keep going.
     while !stop?
-      
-      @multi_feed.each do |rss|
-        str = "Read parent: " + rss
-        #puts str
+
+      manage_tempdir
+
+      @multi_feed.each do |rss|     #get the father's children
+        #puts "Read parent: " + rss
         begin
           page = @agent.get(rss)
           page.links.each do |link|
@@ -62,11 +70,9 @@ class LogStash::Inputs::Multirss < LogStash::Inputs::Base
         links.each do |link|
           begin
             response_link(link,queue)
-            str = "Read clidren: " + link
-            #puts str
+            #puts "Read clidren: " + link
           rescue
-            str = "Fail to get " + link + " children"
-            #puts str
+            #puts "Fail to get " + link + " children"
             next
           end # end begin
         end # end each links
@@ -82,17 +88,23 @@ class LogStash::Inputs::Multirss < LogStash::Inputs::Base
       all_links.each do |link|
         begin
           response_link(link,queue)
-          str = "Read clidren: " + link
-          #puts str
+          #puts "Read clidren: " + link
         rescue
-          str = "Fail to get " + link
-          #puts str
+          #puts "Fail to get " + link
           next
         end # begin
       end # all_links loop
 
       urls.clear
 
+      # Remove the tempfiles
+      if (File::directory?(@d))
+        ENV.delete("TMPDIR")
+        FileUtils.rm_rf @d
+        #puts "Remove temp dir"
+      end
+
+    #Stoppable_sleep interval
     Stud.stoppable_sleep(@interval) { stop? }
     end # end while
   end # end def run
@@ -129,18 +141,52 @@ class LogStash::Inputs::Multirss < LogStash::Inputs::Base
 
   def link_rss_response(queue, item)
       event = LogStash::Event.new()
-      item.element_children.each do |x| 
-        if x.inner_html.to_s.chars.first(9).join == "<![CDATA["
-          eve = LogStash::Event.new( x.name => x.inner_html.to_s[9..x.inner_html.to_s.length-4])
-          event.append( eve )
-        else
-          eve = LogStash::Event.new( x.name => x.inner_html.to_s )
-          event.append( eve )
-        end # end if
-      end # end loop
-      decorate(event)
-      queue << event
+
+      if @keywords.size.to_s.to_i > 0 # "Have keywords
+        haskey = false
+
+        item.element_children.each do |x|   
+            if include_keywords(x.inner_html.to_s)
+              #puts "--------------Finded notice with the keyword---------------"
+              haskey = true
+            end
+        end # end loop
+
+        if haskey == true
+          item.element_children.each do |x|
+            #puts "The notice " + x.name + " is " + x.inner_html.to_s
+            if x.inner_html.to_s.chars.first(9).join == "<![CDATA["
+              eve = LogStash::Event.new( x.name => x.inner_html.to_s[9..x.inner_html.to_s.length-4] )
+              event.append( eve )
+            else
+              eve = LogStash::Event.new( x.name => x.inner_html.to_s )
+              event.append( eve )
+            end # end if else       
+          end # end loop
+        elsif haskey == false # havent haskey
+          event = nil
+        end # if haskey
+
+      else # havent keywords!
+        #puts "Havent keywords, go to get all items"
+        item.element_children.each do |x|
+          if x.inner_html.to_s.chars.first(9).join == "<![CDATA["
+            eve = LogStash::Event.new( x.name => x.inner_html.to_s[9..x.inner_html.to_s.length-4])
+            event.append( eve )
+          else
+            eve = LogStash::Event.new( x.name => x.inner_html.to_s )
+            event.append( eve )
+          end # end if
+        end # end loop
+      end # end if have keywords
+
+      if event != nil
+        decorate(event)
+        queue << event
+      end # end if
+      
   end # def link_rss_response
+
 
   def not_include_blacklist(link) 
       for i in 0..@blacklist.length-1
@@ -150,6 +196,35 @@ class LogStash::Inputs::Multirss < LogStash::Inputs::Base
       end # end for
       return true
   end # def not_include_blacklist
+
+
+  def include_keywords(key) 
+    for i in 0..@keywords.length-1
+      if key.include?(@keywords[i])
+        return true
+      end # end if
+    end # end for
+    return false
+  end # def include_keywords
+  
+
+  def manage_tempdir
+    #set the tempfile to openUri output
+    @d = "#{Dir.home}/.tmp"
+    #if exists
+    if (File::directory?(@d))
+      #puts "Dir exists , removed and create again"
+      ENV.delete("TMPDIR")
+      FileUtils.rm_rf @d
+      #create new
+      Dir.mkdir @d    #create in /usr/share/logstash
+      ENV["TMPDIR"] = @d
+    else
+      Dir.mkdir @d    #create in /usr/share/logstash
+      ENV["TMPDIR"] = @d
+      #puts "Dir no exist , created...."
+    end
+  end
 
 
 end # class LogStash::Inputs::Crawler
