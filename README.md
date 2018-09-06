@@ -8,7 +8,11 @@ It is fully free and fully open source. The license is Apache 2.0, meaning you a
 
 ## Install
 
-U can install the plugin from https://rubygems.org/gems/logstash-input-multirss , or build it yuouself in a logstash service or container with :
+You can test it installing in a logstash service or container with the plugin utility :
+
+logstash-plugin install logstash-input-multirss
+
+or you can use other installation type (installing the gem) from https://rubygems.org/gems/logstash-input-multirss , or build it yuouself in a logstash service or container with :
 
 git clone https://github.com/felixramirezgarcia/logstash-input-multirss
 
@@ -92,3 +96,4 @@ Programming is not a required skill. Whatever you've seen about open source and 
 It is more important to the community that you are able to contribute.
 
 For more information about contributing, see the [CONTRIBUTING](https://github.com/elastic/logstash/blob/master/CONTRIBUTING.md) file.
+
