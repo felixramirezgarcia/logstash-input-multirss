@@ -44,13 +44,6 @@ All the params are :
     
     5) keywords => [array] If you use this parameter will only compile those news that contain in any of its attributes a word from this array
 
-## Documentation
-
-Logstash provides infrastructure to automatically generate documentation for this plugin. We use the asciidoc format to write documentation so any comments in the source code will be first converted into asciidoc and then into html. All plugin documentation are placed under one [central location](http://www.elastic.co/guide/en/logstash/current/).
-
-- For formatting code or config example, you can use the asciidoc `[source,ruby]` directive
-- For more asciidoc formatting tips, see the excellent reference here https://github.com/elastic/docs#asciidoc-guide
-
 ## Need Help?
 
 Need help? Try #logstash on freenode IRC or the https://discuss.elastic.co/c/logstash discussion forum.
